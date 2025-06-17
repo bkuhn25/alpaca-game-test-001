@@ -124,14 +124,7 @@
       }
 
       #score {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        color: white;
-        font-size: 24px;
-        font-weight: 600;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-        z-index: 50;
+        display: none; /* Hide the DOM score element since we'll draw it on canvas */
       }
 
       /* Responsive design for different screen sizes */
@@ -243,7 +236,7 @@
         width: 60,
         height: 55,
         velocity: 0,
-        gravity: 0.15,
+        gravity: 0.22,
         jumpPower: -4.5,
         rotation: 0,
       };
@@ -456,6 +449,27 @@
         });
       }
 
+      function drawScore() {
+        if (gameState === 'playing') {
+          ctx.save();
+          ctx.font = 'bold 32px Poppins, sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.lineWidth = 3;
+
+          const scoreText = `Score: ${score}`;
+          const textWidth = ctx.measureText(scoreText).width;
+          const x = 30;
+          const y = 50;
+
+          // Draw text outline
+          ctx.strokeText(scoreText, x, y);
+          // Draw text fill
+          ctx.fillText(scoreText, x, y);
+          ctx.restore();
+        }
+      }
+
       // Game logic
       function updateAlpaca() {
         if (gameState !== 'playing') return;
@@ -625,6 +639,7 @@
         }
 
         drawParticles();
+        drawScore();
 
         // Update game logic
         updateAlpaca();
