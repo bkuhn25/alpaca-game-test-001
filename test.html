@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Alpaca Flappy</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(
+          135deg,
+          #667eea 0%,
+          #764ba2 50%,
+          #f093fb 100%
+        );
+        font-family: 'Poppins', sans-serif;
+        overflow: hidden;
+      }
+
+      #gameCanvas {
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
+          0 0 0 1px rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+
+      #gameCanvas:hover {
+        transform: scale(1.02);
+      }
+
+      #startScreen,
+      #gameOverScreen {
+        position: absolute;
+        text-align: center;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        animation: fadeIn 0.5s ease-out;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      h1 {
+        font-size: 52px;
+        margin-bottom: 24px;
+        font-weight: 700;
+        background: linear-gradient(45deg, #ffd89b, #19547b);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: none;
+        letter-spacing: -1px;
+      }
+
+      .instruction {
+        font-size: 18px;
+        margin-bottom: 12px;
+        font-weight: 400;
+        opacity: 0.9;
+        line-height: 1.5;
+      }
+
+      .instruction:last-of-type {
+        margin-top: 20px;
+        padding: 12px 24px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 25px;
+        font-weight: 600;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.9;
+        }
+        50% {
+          transform: scale(1.05);
+          opacity: 1;
+        }
+      }
+
+      .score {
+        font-size: 36px;
+        margin-top: 24px;
+        font-weight: 600;
+        background: linear-gradient(45deg, #ff9a9e, #fecfef);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 768px) {
+        body {
+          padding: 10px;
+        }
+
+        h1 {
+          font-size: 42px;
+        }
+
+        .instruction {
+          font-size: 16px;
+        }
+
+        .score {
+          font-size: 32px;
+        }
+
+        #startScreen,
+        #gameOverScreen {
+          padding: 30px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      id="gameCanvas"
+      width="400"
+      height="600"
+    ></canvas>
+
+    <div id="startScreen">
+      <h1>Alpaca Flappy</h1>
+      <p class="instruction">Click or press Space to jump!</p>
+      <p class="instruction">Avoid the cacti!</p>
+      <p class="instruction">Press H to toggle hitbox view</p>
+      <p class="instruction">Click to start</p>
+    </div>
+
+    <div
+      id="gameOverScreen"
+      class="hidden"
+    >
+      <h1>Game Over!</h1>
+      <p class="score">Score: <span id="finalScore">0</span></p>
+      <p class="instruction">Click to play again</p>
+    </div>
+
+    <script>
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const startScreen = document.getElementById('startScreen');
+      const gameOverScreen = document.getElementById('gameOverScreen');
+      const finalScoreElement = document.getElementById('finalScore');
+
+      // Game variables
+      let gameState = 'start'; // start, playing, gameover
+      let score = 0;
+      let highScore = 0;
+      let frame = 0;
+      let showHitboxes = false; // Debug mode to visualize hitboxes
+
+      // Load alpaca logo
+      const alpacaLogo = new Image();
+      alpacaLogo.src = 'static/alpaca_logo.png';
+      let logoLoaded = false;
+
+      alpacaLogo.onload = function () {
+        logoLoaded = true;
+      };
+
+      // Alpaca properties
+      const alpaca = {
+        x: 80,
+        y: canvas.height / 2,
+        width: 70, // Increased a bit more for better visibility
+        height: 65, // Increased a bit more for better visibility
+        velocity: 0,
+        gravity: 0.15, // Reduced from 0.25 for even slower falling
+        jump: -5, // Reduced from -6 to match the gentler gravity
+        rotation: 0,
+      };
+
+      // Cacti array
+      const cacti = [];
+      const cactusGap = 200; // Increased from 180 for easier passage
+      const cactusWidth = 80;
+      const cactusSpeed = 2.5; // Reduced from 3 for more reaction time
+
+      // Particles for effects
+      const particles = [];
+
+      // Clouds for background
+      const clouds = [
+        { x: 100, y: 50, width: 60, height: 30, speed: 0.5 },
+        { x: 300, y: 100, width: 80, height: 40, speed: 0.7 },
+        { x: 500, y: 80, width: 70, height: 35, speed: 0.6 },
+      ];
+
+      // Draw alpaca (now using logo)
+      function drawAlpaca() {
+        if (!logoLoaded) {
+          // Fallback: draw a simple rectangle if logo hasn't loaded yet
+          ctx.fillStyle = '#4ECDC4';
+          ctx.fillRect(alpaca.x, alpaca.y, alpaca.width, alpaca.height);
+          return;
+        }
+
+        ctx.save();
+        ctx.translate(
+          alpaca.x + alpaca.width / 2,
+          alpaca.y + alpaca.height / 2
+        );
+        ctx.rotate(alpaca.rotation);
+
+        // Enable high-quality image rendering
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Draw shadow
+        ctx.globalAlpha = 0.3;
+        ctx.drawImage(
+          alpacaLogo,
+          -alpaca.width / 2 + 2,
+          -alpaca.height / 2 + 2,
+          alpaca.width,
+          alpaca.height
+        );
+
+        // Draw the logo with crisp rendering
+        ctx.globalAlpha = 1.0;
+        ctx.drawImage(
+          alpacaLogo,
+          -alpaca.width / 2,
+          -alpaca.height / 2,
+          alpaca.width,
+          alpaca.height
+        );
+
+        ctx.restore();
+      }
+
+      // Draw cactus
+      function drawCactus(x, height, isTop) {
+        const y = isTop ? 0 : canvas.height - height - 60;
+
+        // Cactus shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(x + 3, y + 3, cactusWidth, height);
+
+        // Main trunk with gradient
+        const cactusGradient = ctx.createLinearGradient(
+          x,
+          y,
+          x + cactusWidth,
+          y
+        );
+        cactusGradient.addColorStop(0, '#4ECDC4');
+        cactusGradient.addColorStop(0.5, '#44A08D');
+        cactusGradient.addColorStop(1, '#093637');
+        ctx.fillStyle = cactusGradient;
+        ctx.fillRect(x, y, cactusWidth, height);
+
+        // Modern geometric spikes
+        ctx.fillStyle = '#2ECC71';
+        for (let i = 0; i < height; i += 25) {
+          // Left side spikes
+          ctx.beginPath();
+          ctx.moveTo(x, y + i + 5);
+          ctx.lineTo(x - 6, y + i + 10);
+          ctx.lineTo(x, y + i + 15);
+          ctx.fill();
+
+          // Right side spikes
+          ctx.beginPath();
+          ctx.moveTo(x + cactusWidth, y + i + 5);
+          ctx.lineTo(x + cactusWidth + 6, y + i + 10);
+          ctx.lineTo(x + cactusWidth, y + i + 15);
+          ctx.fill();
+        }
+
+        // Cactus arms with modern styling
+        if (!isTop && height > 150) {
+          // Left arm
+          const leftArmGradient = ctx.createLinearGradient(
+            x - 20,
+            y + 25,
+            x,
+            y + 25
+          );
+          leftArmGradient.addColorStop(0, '#4ECDC4');
+          leftArmGradient.addColorStop(1, '#44A08D');
+          ctx.fillStyle = leftArmGradient;
+          ctx.fillRect(x - 20, y + 40, 25, 15);
+          ctx.fillRect(x - 20, y + 25, 15, 30);
+
+          // Right arm
+          const rightArmGradient = ctx.createLinearGradient(
+            x + cactusWidth,
+            y + 45,
+            x + cactusWidth + 20,
+            y + 45
+          );
+          rightArmGradient.addColorStop(0, '#44A08D');
+          rightArmGradient.addColorStop(1, '#4ECDC4');
+          ctx.fillStyle = rightArmGradient;
+          ctx.fillRect(x + cactusWidth - 5, y + 60, 25, 15);
+          ctx.fillRect(x + cactusWidth + 5, y + 45, 15, 30);
+        }
+      }
+
+      // Draw clouds
+      function drawClouds() {
+        clouds.forEach((cloud) => {
+          // Modern cloud with gradient
+          const cloudGradient = ctx.createRadialGradient(
+            cloud.x,
+            cloud.y,
+            0,
+            cloud.x,
+            cloud.y,
+            cloud.width / 2
+          );
+          cloudGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+          cloudGradient.addColorStop(1, 'rgba(255, 255, 255, 0.3)');
+          ctx.fillStyle = cloudGradient;
+
+          ctx.beginPath();
+          ctx.ellipse(
+            cloud.x,
+            cloud.y,
+            cloud.width / 2,
+            cloud.height / 2,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.ellipse(
+            cloud.x - cloud.width / 3,
+            cloud.y,
+            cloud.width / 3,
+            cloud.height / 2.5,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.ellipse(
+            cloud.x + cloud.width / 3,
+            cloud.y,
+            cloud.width / 3,
+            cloud.height / 2.5,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        });
+      }
+
+      // Draw ground
+      function drawGround() {
+        // Modern ground gradient
+        const groundGradient = ctx.createLinearGradient(
+          0,
+          canvas.height - 60,
+          0,
+          canvas.height
+        );
+        groundGradient.addColorStop(0, '#ff9a9e');
+        groundGradient.addColorStop(0.5, '#fecfef');
+        groundGradient.addColorStop(1, '#fecfef');
+        ctx.fillStyle = groundGradient;
+        ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
+
+        // Subtle texture dots
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        for (let i = 0; i < canvas.width; i += 25) {
+          ctx.beginPath();
+          ctx.arc(
+            i + Math.random() * 25,
+            canvas.height - 30 + Math.random() * 20,
+            1.5,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
+      }
+
+      // Draw background
+      function drawBackground() {
+        // Modern sky gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height - 60);
+        gradient.addColorStop(0, '#667eea');
+        gradient.addColorStop(0.3, '#764ba2');
+        gradient.addColorStop(0.7, '#f093fb');
+        gradient.addColorStop(1, '#fecfef');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height - 60);
+
+        drawClouds();
+        drawGround();
+      }
+
+      // Create particle effect
+      function createParticle(x, y) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.random() * 4 - 2,
+          vy: Math.random() * 4 - 2,
+          life: 1.0,
+          color: `hsl(${Math.random() * 60 + 30}, 70%, 60%)`,
+        });
+      }
+
+      // Update and draw particles
+      function updateParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.1;
+          p.life -= 0.02;
+
+          if (p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = p.life;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // Create cactus pair
+      function createCactus() {
+        const minHeight = 80; // Reduced from 100
+        const maxHeight = 280; // Reduced from 300
+        const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
+        const bottomHeight = canvas.height - topHeight - cactusGap - 60;
+
+        cacti.push({
+          x: canvas.width,
+          topHeight: topHeight,
+          bottomHeight: bottomHeight,
+          passed: false,
+        });
+      }
+
+      // Update game
+      function update() {
+        if (gameState !== 'playing') return;
+
+        frame++;
+
+        // Update alpaca
+        alpaca.velocity += alpaca.gravity;
+        alpaca.y += alpaca.velocity;
+        alpaca.rotation = Math.min(Math.max(alpaca.velocity * 0.08, -0.5), 0.5);
+
+        // Update clouds
+        clouds.forEach((cloud) => {
+          cloud.x -= cloud.speed;
+          if (cloud.x + cloud.width < 0) {
+            cloud.x = canvas.width + cloud.width;
+            cloud.y = Math.random() * 120 + 20;
+          }
+        });
+
+        // Update cacti
+        for (let i = cacti.length - 1; i >= 0; i--) {
+          cacti[i].x -= cactusSpeed;
+
+          // Check if alpaca passed the cactus
+          if (!cacti[i].passed && cacti[i].x + cactusWidth < alpaca.x) {
+            cacti[i].passed = true;
+            score += 5;
+            // Create celebration particles
+            for (let j = 0; j < 10; j++) {
+              createParticle(
+                alpaca.x + alpaca.width / 2,
+                alpaca.y + alpaca.height / 2
+              );
+            }
+          }
+
+          // Remove off-screen cacti
+          if (cacti[i].x + cactusWidth < 0) {
+            cacti.splice(i, 1);
+          }
+        }
+
+        // Create new cacti
+        if (frame % 100 === 0) {
+          // Increased from 90 for more space between cacti
+          createCactus();
+        }
+
+        // Check collisions
+        checkCollisions();
+
+        // Update particles
+        updateParticles();
+      }
+
+      // Check collisions
+      function checkCollisions() {
+        // Define alpaca hitbox - smaller than visual sprite for forgiveness
+        const hitboxPadding = 8; // Pixels to shrink hitbox by
+        const alpacaHitbox = {
+          x: alpaca.x + hitboxPadding,
+          y: alpaca.y + hitboxPadding,
+          width: alpaca.width - hitboxPadding * 2,
+          height: alpaca.height - hitboxPadding * 2,
+        };
+
+        // Ground collision (with hitbox)
+        if (alpacaHitbox.y + alpacaHitbox.height > canvas.height - 60) {
+          gameOver();
+          return;
+        }
+
+        // Ceiling collision
+        if (alpacaHitbox.y < 0) {
+          gameOver();
+          return;
+        }
+
+        // Cacti collision with proper hitboxes
+        for (const cactus of cacti) {
+          // Define cactus hitboxes - also slightly smaller for fairness
+          const cactusPadding = 5;
+
+          // Check collision with top cactus
+          const topCactusHitbox = {
+            x: cactus.x + cactusPadding,
+            y: 0,
+            width: cactusWidth - cactusPadding * 2,
+            height: cactus.topHeight - cactusPadding,
+          };
+
+          // Check collision with bottom cactus
+          const bottomCactusHitbox = {
+            x: cactus.x + cactusPadding,
+            y: canvas.height - cactus.bottomHeight - 60 + cactusPadding, // Adjusted y calculation
+            width: cactusWidth - cactusPadding * 2,
+            height: cactus.bottomHeight - cactusPadding,
+          };
+
+          // Rectangle collision detection
+          if (
+            alpacaHitbox.x < topCactusHitbox.x + topCactusHitbox.width &&
+            alpacaHitbox.x + alpacaHitbox.width > topCactusHitbox.x &&
+            alpacaHitbox.y < topCactusHitbox.y + topCactusHitbox.height &&
+            alpacaHitbox.y + alpacaHitbox.height > topCactusHitbox.y
+          ) {
+            gameOver();
+            return;
+          }
+
+          if (
+            alpacaHitbox.x < bottomCactusHitbox.x + bottomCactusHitbox.width &&
+            alpacaHitbox.x + alpacaHitbox.width > bottomCactusHitbox.x &&
+            alpacaHitbox.y < bottomCactusHitbox.y + bottomCactusHitbox.height &&
+            alpacaHitbox.y + alpacaHitbox.height > bottomCactusHitbox.y
+          ) {
+            gameOver();
+            return;
+          }
+        }
+      }
+
+      // Game over
+      function gameOver() {
+        gameState = 'gameover';
+        highScore = Math.max(score, highScore);
+        finalScoreElement.textContent = score;
+        gameOverScreen.classList.remove('hidden');
+
+        // Explosion effect
+        for (let i = 0; i < 30; i++) {
+          createParticle(
+            alpaca.x + alpaca.width / 2,
+            alpaca.y + alpaca.height / 2
+          );
+        }
+      }
+
+      // Draw score
+      function drawScore() {
+        // Modern score display
+        ctx.font = 'bold 36px Poppins, Arial';
+
+        // Score background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(15, 15, 200, 50);
+
+        // Score text with gradient
+        const scoreGradient = ctx.createLinearGradient(20, 30, 20, 60);
+        scoreGradient.addColorStop(0, '#FFD700');
+        scoreGradient.addColorStop(1, '#FFA500');
+        ctx.fillStyle = scoreGradient;
+        ctx.fillText(`Score: ${score}`, 20, 50);
+
+        if (highScore > 0) {
+          ctx.font = '20px Poppins, Arial';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillText(`High: ${highScore}`, 20, 80);
+        }
+
+        // Debug mode indicator
+        if (showHitboxes) {
+          ctx.font = '16px Poppins, Arial';
+          ctx.fillStyle = '#FFFF00';
+          ctx.fillText('Debug: Hitboxes ON (Press H to toggle)', 20, 110);
+        }
+      }
+
+      // Draw hitboxes for debugging
+      function drawHitboxes() {
+        if (!showHitboxes) return;
+
+        ctx.strokeStyle = '#FF0';
+        ctx.lineWidth = 2;
+
+        // Draw alpaca hitbox
+        const hitboxPadding = 8;
+        ctx.strokeRect(
+          alpaca.x + hitboxPadding,
+          alpaca.y + hitboxPadding,
+          alpaca.width - hitboxPadding * 2,
+          alpaca.height - hitboxPadding * 2
+        );
+
+        // Draw cacti hitboxes
+        const cactusPadding = 5;
+        cacti.forEach((cactus) => {
+          // Top cactus hitbox
+          ctx.strokeRect(
+            cactus.x + cactusPadding,
+            0,
+            cactusWidth - cactusPadding * 2,
+            cactus.topHeight - cactusPadding
+          );
+
+          // Bottom cactus hitbox
+          ctx.strokeRect(
+            cactus.x + cactusPadding,
+            canvas.height - cactus.bottomHeight - 60 + cactusPadding, // Adjusted y calculation
+            cactusWidth - cactusPadding * 2,
+            cactus.bottomHeight - cactusPadding
+          );
+        });
+      }
+
+      // Main draw function
+      function draw() {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw background
+        drawBackground();
+
+        // Draw cacti
+        cacti.forEach((cactus) => {
+          drawCactus(cactus.x, cactus.topHeight, true);
+          drawCactus(cactus.x, cactus.bottomHeight, false);
+        });
+
+        // Draw particles
+        updateParticles();
+
+        // Draw alpaca
+        if (gameState === 'playing' || gameState === 'gameover') {
+          drawAlpaca();
+        }
+
+        // Draw score
+        if (gameState === 'playing') {
+          drawScore();
+        }
+
+        // Draw hitboxes for debugging
+        drawHitboxes();
+      }
+
+      // Game loop
+      function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Jump function
+      function jump() {
+        if (gameState === 'playing') {
+          alpaca.velocity = alpaca.jump;
+        } else if (gameState === 'start') {
+          startGame();
+        } else if (gameState === 'gameover') {
+          resetGame();
+        }
+      }
+
+      // Start game
+      function startGame() {
+        gameState = 'playing';
+        startScreen.classList.add('hidden');
+        resetGame();
+      }
+
+      // Reset game
+      function resetGame() {
+        alpaca.y = canvas.height / 2;
+        alpaca.velocity = 0;
+        alpaca.rotation = 0;
+        score = 0;
+        frame = 0;
+        cacti.length = 0;
+        particles.length = 0;
+        gameState = 'playing';
+        gameOverScreen.classList.add('hidden');
+      }
+
+      // Event listeners
+      canvas.addEventListener('click', jump);
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          jump();
+        } else if (e.key.toLowerCase() === 'h') {
+          showHitboxes = !showHitboxes;
+        }
+      });
+
+      // Position UI elements
+      function positionUI() {
+        const rect = canvas.getBoundingClientRect();
+        startScreen.style.left = rect.left + 'px';
+        startScreen.style.top = rect.top + 'px';
+        startScreen.style.width = rect.width + 'px';
+        startScreen.style.height = rect.height + 'px';
+
+        gameOverScreen.style.left = rect.left + 'px';
+        gameOverScreen.style.top = rect.top + 'px';
+        gameOverScreen.style.width = rect.width + 'px';
+        gameOverScreen.style.height = rect.height + 'px';
+      }
+
+      // Initialize
+      positionUI();
+      window.addEventListener('resize', positionUI);
+      gameLoop();
+    </script>
+  </body>
+</html>
