@@ -197,6 +197,9 @@
       let score = 0;
       let highScore = parseInt(localStorage.getItem('alpacaHighScore') || '0');
       let frame = 0;
+      let lastTime = 0;
+      let deltaTime = 0;
+      let obstacleSpawnTimer = 0;
 
       // Initialize canvas size for mobile
       function initCanvas() {
@@ -236,8 +239,8 @@
         width: 60,
         height: 55,
         velocity: 0,
-        gravity: 0.22,
-        jumpPower: -4.5,
+        gravity: 0.28,
+        jumpPower: -5.75,
         rotation: 0,
       };
 
@@ -247,7 +250,7 @@
       const gameSettings = {
         obstacleGap: 250,
         obstacleWidth: 70,
-        obstacleSpeed: 2.5,
+        obstacleSpeed: 3.6,
         spawnRate: 110,
       };
 
@@ -261,13 +264,14 @@
         particles.length = 0;
         score = 0;
         frame = 0;
+        obstacleSpawnTimer = 0;
         updateScore();
       }
 
       // Get current difficulty multiplier based on score
       function getDifficultyMultiplier() {
-        const level = Math.floor(score / 25); // Every 25 points = new difficulty level
-        return Math.min(level * 0.1, 1.0); // Cap at 100% increase
+        const level = Math.floor(score / 15); // Every 15 points = new difficulty level
+        return Math.min(level * 0.15, 1.5); // Cap at 150% increase
       }
 
       // Create obstacle pair
@@ -429,10 +433,10 @@
 
       function drawParticles() {
         particles.forEach((particle, index) => {
-          particle.x += particle.vx;
-          particle.y += particle.vy;
-          particle.vy += 0.2; // gravity
-          particle.life -= 0.02;
+          particle.x += particle.vx * deltaTime;
+          particle.y += particle.vy * deltaTime;
+          particle.vy += 0.2 * deltaTime; // gravity
+          particle.life -= 0.02 * deltaTime;
 
           if (particle.life <= 0) {
             particles.splice(index, 1);
@@ -474,8 +478,8 @@
       function updateAlpaca() {
         if (gameState !== 'playing') return;
 
-        alpaca.velocity += alpaca.gravity;
-        alpaca.y += alpaca.velocity;
+        alpaca.velocity += alpaca.gravity * deltaTime;
+        alpaca.y += alpaca.velocity * deltaTime;
 
         // Rotation based on velocity
         alpaca.rotation = Math.min(Math.max(alpaca.velocity * 0.05, -0.5), 0.8);
@@ -495,10 +499,15 @@
         const difficulty = getDifficultyMultiplier();
 
         // Speed increases with difficulty
-        const currentSpeed = gameSettings.obstacleSpeed + difficulty * 1.5;
+        const currentSpeed =
+          (gameSettings.obstacleSpeed + difficulty * 1.5) * deltaTime;
 
-        // Spawn rate increases with difficulty (lower number = more frequent)
-        const currentSpawnRate = gameSettings.spawnRate - difficulty * 30;
+        // Spawn rate increases with difficulty (time in milliseconds between spawns)
+        const baseSpawnTime = 1800; // 1.8 seconds base
+        const currentSpawnTime = Math.max(
+          baseSpawnTime - difficulty * 400,
+          1000
+        ); // Min 1 second
 
         // Move obstacles
         obstacles.forEach((obstacle, index) => {
@@ -525,9 +534,11 @@
           }
         });
 
-        // Spawn new obstacles
-        if (frame % Math.max(currentSpawnRate, 50) === 0) {
+        // Spawn new obstacles based on time, not frames
+        obstacleSpawnTimer += deltaTime * 16.67; // Convert back to milliseconds
+        if (obstacleSpawnTimer >= currentSpawnTime) {
           createObstacle();
+          obstacleSpawnTimer = 0;
         }
       }
 
@@ -616,7 +627,15 @@
       }
 
       // Game loop
-      function gameLoop() {
+      function gameLoop(currentTime = 0) {
+        // Calculate delta time in milliseconds (target: 60 FPS = ~16.67ms per frame)
+        if (lastTime === 0) lastTime = currentTime;
+        deltaTime = Math.min(currentTime - lastTime, 50); // Cap at 50ms to prevent huge jumps
+        lastTime = currentTime;
+
+        // Convert to a normalized value (1.0 = 60 FPS)
+        deltaTime = deltaTime / 16.67;
+
         frame++;
 
         // Clear canvas
